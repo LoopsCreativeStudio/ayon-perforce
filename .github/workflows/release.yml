@@ -1,0 +1,41 @@
+name: Release
+on:
+  push:
+    branches:
+      - main
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        python-version: ["3.9"]
+    concurrency: release
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Python Semantic Release
+      id: release
+      uses: python-semantic-release/python-semantic-release@master
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Create package
+      run: |
+        python create_package.py
+        mkdir -p dist && cp package/*.zip ./dist
+    - name: Upload to gitHub release
+      id: github-release
+      if: steps.release.outputs.released == 'true'
+      uses: python-semantic-release/upload-to-gh-release@main
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        tag: ${{ steps.release.outputs.tag }}
+
