@@ -20,6 +20,8 @@ Settings let you define the client behavior by overrriding following P4 config v
  * P4CLIENT
  * P4USER
 
+![image](https://github.com/LoopsCreativeStudio/ayon-perforce/assets/89812691/65c07fe9-95c7-40a0-b3d1-7a8cd8f55a55)
+
 In order to execute the synchronization in your pipeline, you have to add hosts that use Perforce remote service like Unreal Editor.
 
 This settings can be set at studio level or projects level in your projects settings.
