@@ -2,7 +2,7 @@
 import re
 import subprocess
 
-from openpype.lib.applications import (
+from ayon_applications import (
     PreLaunchHook, LaunchTypes, ApplicationLaunchFailed
 )
 

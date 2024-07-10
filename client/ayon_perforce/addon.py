@@ -1,14 +1,14 @@
 
 
 import os
-from openpype.modules import OpenPypeModule, ILaunchHookPaths
 
+from ayon_core.addon import AYONAddon
 from .version import __version__
 
 PERFORCE_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-class PerforceAddon(OpenPypeModule, ILaunchHookPaths):
+class PerforceAddon(AYONAddon):
     """Perfrorce Addon
     """
     name = "perforce"
