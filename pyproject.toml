@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "ayon-perforce"
 description = "perforce addon for ayon"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["LoopsCreativeStudio <tech@loopscreativestudio.com>"]
 license = "Apache-2.0"
 readme = "README.md"
