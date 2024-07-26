@@ -1,10 +1,61 @@
-
+"""Perforce Sync PreLaunch Hook."""
 import re
 import subprocess
+from typing import Optional, Union, Dict
+
+from qtpy.QtWidgets import QLabel
+from qtpy.QtGui import QIcon
+from qtpy.QtCore import Qt
+
+from ayon_core.resources import get_ayon_icon_filepath
+from ayon_core.style import load_stylesheet
+from ayon_core.tools.utils import ErrorMessageBox
 
 from ayon_applications import (
     PreLaunchHook, LaunchTypes, ApplicationLaunchFailed
 )
+
+class PerforceErrorMessageBox(ErrorMessageBox):
+    """Perforce Error Message Box."""
+    def __init__(
+        self,
+        p4settings: Dict[str, Union[str, bool]],
+        exc_msg: str,
+        msg_type: str = "ERROR",
+    ) -> None:
+        self._p4settings = p4settings
+        self._exc_msg = exc_msg
+        self._msg_type = msg_type
+        super().__init__(f"Perforce {self._msg_type}", None)
+        self.setModal(True)
+        self.setWindowIcon(QIcon(get_ayon_icon_filepath()))
+        self.setStyleSheet(load_stylesheet())
+
+    def _create_top_widget(self, parent_widget) -> QLabel:
+        label_widget = QLabel(parent_widget)
+        top_msg = (
+            "Perforce failed to perform sync:"
+            if self._msg_type == "ERROR"
+            else "Perforce complete sync with warning messages:"
+        )
+        label_widget.setText(f"<span style='font-size:16pt;'>{top_msg}</span>")
+        return label_widget
+
+    def _create_content(self, content_layout) -> None:
+        content_layout.addWidget(self._create_line())
+        content_html = [
+            f"<span style='font-weight:bold;'>{key}:</span> {value}"
+            for key, value in self._p4settings.items()
+            if key != "bypass" and (key != "P4USER" or value is not None)
+        ]
+        content_html.append(
+            f"<br>{self.convert_text_for_html(self._exc_msg)}"
+        )
+        content_label = QLabel("<br>".join(content_html), self)
+        content_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        content_label.setCursor(Qt.IBeamCursor)
+        content_layout.addWidget(content_label)
+
 
 class PerforceSync(PreLaunchHook):
     """Run Perforce Sync for the given project config.
@@ -12,60 +63,53 @@ class PerforceSync(PreLaunchHook):
     order = -1
     launch_types = {LaunchTypes.local}
 
-    def execute(self, *args, **kwargs):
-
+    def _get_p4settings(self) -> Optional[Dict[str, Union[str, bool]]]:
         perforce_settings = self.data["project_settings"]["perforce"]
-
         perforce_hosts = {
             host["name"]: host["bypass"]
             for host in perforce_settings["hosts"]
         }
 
         if self.host_name not in perforce_hosts:
-            return
+            return None
 
-        host_bypass = perforce_hosts[self.host_name]
-
-        p4_port = (
+        p4port = (
             perforce_settings.get("p4port")
             or self.data["env"].get("P4PORT")
         )
-        p4_client = (
+        p4client = (
             perforce_settings.get("p4client")
             or self.data["env"].get("P4CLIENT")
             or "{project_name}_{COMPUTERNAME}_{USERNAME}"
         )
-        p4_user = (
+        p4user = (
             perforce_settings.get("p4user")
             or self.data["env"].get("P4USER")
         )
 
-        if p4_client.count("{") == p4_client.count("}") > 0:
-            p4_client = p4_client.format(
+        if p4client.count("{") == p4client.count("}") > 0:
+            p4client = p4client.format(
                 project_name=self.data["project_name"],
                 **self.data["env"]
             )
-
         if perforce_settings.get("p4client_lower"):
-            p4_client = p4_client.lower()
+            p4client = p4client.lower()
 
-        self.log.info(f"P4PORT={p4_port or None}")
-        self.log.info(f"P4CLIENT={p4_client or None}")
-        self.log.info(f"P4USER={p4_user or None}") 
+        return {
+            "P4PORT": p4port or None,
+            "P4CLIENT": p4client or None,
+            "P4USER": p4user or None,
+            "bypass": perforce_hosts.get(self.host_name, False)
+        }
 
-        if not p4_port or not p4_client:
-            self.log.warning("incomplete p4 configuration: skip sync !")
-            if not host_bypass:
-                raise ApplicationLaunchFailed(
-                    "Couldn't run the application! Perforce config error!"
-                )
+    def run_perforce_sync(
+        self, p4settings: Dict[str, Union[str, bool]]
+    ) -> None:
+        """Run Perforce Sync using the given settings.
 
-        subprocess.run(["p4", "set", f"P4PORT={p4_port}"], check=True)
-        subprocess.run(["p4", "set", f"P4CLIENT={p4_client}"], check=True)
-        if p4_user:
-            subprocess.run(["p4", "set", f"P4USER={p4_user}"], check=True)
-
-        # start sync
+        Args:
+            p4settings (Dict[str, Union[str, bool]]): The perforce settings.
+        """
         self.log.info("[SYNC PERFORCE PROJECT]")
         with subprocess.Popen(
             ['p4', '-I', 'sync', '-s', '-q'],
@@ -76,21 +120,85 @@ class PerforceSync(PreLaunchHook):
             bufsize=0,
             errors='replace',
         ) as process:
+            complete_log = ""
             capture_log = ""
             last_percent = None
-            while process.poll() is None:
-                capture_log += process.stdout.read(1)
-                percent_match = re.search(r"\d{1,3}%|finishing", capture_log)
+            read_log = None
+            while True:
+                read_log = process.stdout.read(1)
+                if read_log == "" and not process.poll() is None:
+                    break
+                capture_log += read_log
+
+                percent_match = re.search(r"(\d{1,3}%|finishing)", capture_log)
+                warning_match = re.search(
+                    r"(.* can't overwrite existing .*)\n", capture_log, re.M
+                )
                 if percent_match:
-                    current_percent = percent_match.group(0)
+                    current_percent = percent_match.group(1)
                     if last_percent != current_percent:
                         self.log.info(f"sync {current_percent}")
                         last_percent = current_percent
                     capture_log = ""
+                elif warning_match:
+                    self.log.info(f"*** WRN: {warning_match.group(1)}")
+                    complete_log += capture_log
+                    capture_log = ""
+                elif capture_log.endswith("\n"):
+                    if capture_log.strip():
+                        complete_log += capture_log.strip() + "\n"
+                    capture_log = ""
+                elif capture_log == "sync ":
+                    capture_log = ""
+
             if process.returncode != 0:
-                self.log.info(capture_log + process.stdout.read())
-                self.log.warning("sync error !")
-                if not host_bypass:
+                error_msg = (
+                    "Perforce sync process return non-zero code: "
+                    f"{process.returncode}"
+                )
+                self.log.error(error_msg)
+                box = PerforceErrorMessageBox(
+                    p4settings, f"{complete_log}\n{error_msg}"
+                )
+                box.exec_()
+                if not p4settings["bypass"]:
                     raise ApplicationLaunchFailed(
                         "Couldn't run the application! Perforce sync failed!"
                     )
+            elif complete_log:
+                box = PerforceErrorMessageBox(
+                    p4settings,
+                    complete_log,
+                    "Warning",
+                )
+                box.exec_()
+
+    def execute(self, *_args, **_kwargs) -> None:
+        """Execute prelaunch hook process."""
+
+        p4settings = self._get_p4settings()
+
+        if p4settings is None:
+            return
+
+        for key, value in p4settings.items():
+            self.log.info(f"{key}={value}")
+
+        if not p4settings["P4PORT"] or not p4settings["P4CLIENT"]:
+            error_msg = "Incomplete p4 configuration: skip sync!"
+            self.log.error(error_msg)
+            if not p4settings["bypass"]:
+                raise ApplicationLaunchFailed(
+                    "Couldn't run the application! Perforce config error!"
+                )
+            box = PerforceErrorMessageBox(p4settings, error_msg)
+            box.exec_()
+            return
+
+        for p4env in ("P4PORT", "P4CLIENT", "P4USER"):
+            if p4settings[p4env] is not None:
+                subprocess.run(
+                    ["p4", "set", f"{p4env}={p4settings[p4env]}"], check=True
+                )
+
+        self.run_perforce_sync(p4settings)

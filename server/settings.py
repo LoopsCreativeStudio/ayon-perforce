@@ -1,4 +1,4 @@
-
+"""Perforce Addon Settings Module."""
 from typing import List
 
 from ayon_server.settings import BaseSettingsModel, SettingsField
@@ -13,14 +13,15 @@ DEFAULT_VALUES = {
 
 
 class HostItemModel(BaseSettingsModel):
+    """Host item model for Perforce settings."""
     _layout = "compact"
-    name: str = SettingsField(title="Host name")
-    bypass: bool = SettingsField(title="Bypass permission")
+    name: str = SettingsField("", title="Host name")
+    bypass: bool = SettingsField(False, title="Bypass permission")
 
 
 class PerforceSettings(BaseSettingsModel):
     """Perforce project settings."""
-    enabled: bool = SettingsField(default=True)
+    enabled: bool = SettingsField(True)
     hosts: List[HostItemModel] = SettingsField(
         default_factory=list,
         title="Hosts",

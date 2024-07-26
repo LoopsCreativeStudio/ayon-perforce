@@ -1,5 +1,4 @@
-
-
+"""Perforce Addon Client Module."""
 import os
 
 from ayon_core.addon import AYONAddon
@@ -15,10 +14,15 @@ class PerforceAddon(AYONAddon):
     version = __version__
     label = "Perforce"
 
-    def initialize(self, module_settings):
+    def initialize(self, settings) -> None:
+        """Initialization of addon attributes.
+
+        Args:
+            settings (dict[str, Any]): Settings.
+        """
         self.enabled = True
 
-    def get_launch_hook_paths(self, app):
+    def get_launch_hook_paths(self) -> str:
         """Implementation for applications launch hooks.
 
         Returns:
