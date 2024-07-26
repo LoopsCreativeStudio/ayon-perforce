@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## v0.3.0 (2024-07-26)
+
+### Feature
+
+* feat: Add popup message on sync error or warning (#3) ([`c1b259c`](https://github.com/LoopsCreativeStudio/ayon-perforce/commit/c1b259c90649b3d4bd775880305f3e7f3f2f8bc6))
+
+### Fix
+
+* fix: err typos missing ([`df7381f`](https://github.com/LoopsCreativeStudio/ayon-perforce/commit/df7381f679097064dc06430c35abd633b4506976))
+
+* fix: err typos missing ([`649f605`](https://github.com/LoopsCreativeStudio/ayon-perforce/commit/649f605a27c2626d3d2faa4297be25f1c7f3d512))
+
+* fix: protected branch ([`f1706ed`](https://github.com/LoopsCreativeStudio/ayon-perforce/commit/f1706ed0ac6c88a17dc95a0ae107d6fc4a465b02))
+
+* fix: protected branch ([`da6af24`](https://github.com/LoopsCreativeStudio/ayon-perforce/commit/da6af24e82ac96359013c5b30cdc227e1d79c2d3))
+
+* fix: err typos missing ([`ddfda45`](https://github.com/LoopsCreativeStudio/ayon-perforce/commit/ddfda458b81ddfeb20f68f454dfaea3553596bd8))
+
+* fix: add token to bypass release ([`5a71a1d`](https://github.com/LoopsCreativeStudio/ayon-perforce/commit/5a71a1da1f0bddc7c195fcc4879ac13c38d1802c))
+
 ## v0.2.0 (2024-07-10)
 
 ### Documentation
