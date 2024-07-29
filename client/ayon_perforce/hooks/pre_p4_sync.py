@@ -3,10 +3,11 @@ import re
 import subprocess
 from typing import Optional, Union, Dict
 
-from qtpy.QtWidgets import QLabel
+from qtpy.QtWidgets import QApplication, QLabel, QPushButton
 from qtpy.QtGui import QIcon
 from qtpy.QtCore import Qt
 
+from ayon_core.lib import Logger
 from ayon_core.resources import get_ayon_icon_filepath
 from ayon_core.style import load_stylesheet
 from ayon_core.tools.utils import ErrorMessageBox
@@ -26,10 +27,28 @@ class PerforceErrorMessageBox(ErrorMessageBox):
         self._p4settings = p4settings
         self._exc_msg = exc_msg
         self._msg_type = msg_type
-        super().__init__(f"Perforce {self._msg_type}", None)
+        self.log = Logger.get_logger("PerforceResolve")
+        super().__init__(
+            f"Perforce {self._msg_type}", QApplication.activeWindow(),
+        )
         self.setModal(True)
         self.setWindowIcon(QIcon(get_ayon_icon_filepath()))
         self.setStyleSheet(load_stylesheet())
+
+        # get ok button
+        footer_layout = self._footer_widget.layout()
+        self.ok_btn = footer_layout.itemAt(2).widget()
+        self.ok_btn.setText("Skip")
+
+        # create resolve button
+        self.resolve_btn = QPushButton("Resolve", self)
+        self.resolve_btn.clicked.connect(self.resolve_warning)
+        self.resolve_btn.hide()
+        footer_layout.addWidget(self.resolve_btn, 0)
+
+        if msg_type == "Warning":
+            self.ok_btn.setText("Skip")
+            self.resolve_btn.show()
 
     def _create_top_widget(self, parent_widget) -> QLabel:
         label_widget = QLabel(parent_widget)
@@ -56,6 +75,67 @@ class PerforceErrorMessageBox(ErrorMessageBox):
         content_label.setCursor(Qt.IBeamCursor)
         content_layout.addWidget(content_label)
 
+    def force_sync(self, depot_file:str) -> subprocess.CompletedProcess:
+        """Force Perforce sync for the give depot file.
+
+        Args:
+            depot_file (str): the depot file to update.
+
+        Returns:
+            subprocess.CompletedProcess: The process result.
+        """
+        return subprocess.run(
+            ['p4', 'sync', '-f', f'{depot_file}#head'],
+            shell=True,
+            text=True,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            errors='replace',
+        )
+
+    def resolve_warning(self) -> None:
+        """Resolve Perforce sync warning.
+        """
+        result_html = ["<span style='font-size:14pt;'>Resolve Result:</span>"]
+        result_failed = False
+        for line in self._exc_msg.splitlines():
+            wrn_match = re.match(
+                r"^(?P<depotfile>.*)#\d+"
+                r" - can't (overwrite existing|update modified) file "
+                r"(?P<localfile>.*)$",
+                line,
+            )
+            if not wrn_match:
+                continue
+            depot_file = wrn_match.group("depotfile")
+            self.log.info(f"sync -f {depot_file}")
+            result = self.force_sync(depot_file)
+            stdout_result = result.stdout.strip()
+            if " - refreshing " in stdout_result:
+                self.log.info(f">>> {stdout_result}")
+                color_result = "YellowGreen"
+            else:
+                self.log.info(f"!!! {stdout_result}")
+                color_result = "Orange"
+                result_failed = True
+
+            result_html.append(
+                f"<span style='color:{color_result};'>"
+                f"{self.convert_text_for_html(stdout_result)}</span>"
+            )
+
+        resolve_label = QLabel("<br>".join(result_html), self)
+        resolve_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        resolve_label.setCursor(Qt.IBeamCursor)
+        content_layout = self._content_widget.layout()
+        content_layout.insertWidget(2, self._create_line())
+        content_layout.insertWidget(3, resolve_label)
+        if not result_failed:
+            self.resolve_btn.hide()
+            self.ok_btn.setText("Ok")
+        else:
+            self.resolve_btn.setDisabled(True)
 
 class PerforceSync(PreLaunchHook):
     """Run Perforce Sync for the given project config.
@@ -132,7 +212,7 @@ class PerforceSync(PreLaunchHook):
 
                 percent_match = re.search(r"(\d{1,3}%|finishing)", capture_log)
                 warning_match = re.search(
-                    r"(.* can't overwrite existing .*)\n", capture_log, re.M
+                    r"(.* can't (overwrite|update) .*)\n", capture_log, re.M
                 )
                 if percent_match:
                     current_percent = percent_match.group(1)
