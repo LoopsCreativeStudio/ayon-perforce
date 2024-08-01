@@ -101,7 +101,7 @@ class PerforceErrorMessageBox(ErrorMessageBox):
         result_failed = False
         for line in self._exc_msg.splitlines():
             wrn_match = re.match(
-                r"^(?P<depotfile>.*)#\d+"
+                r"(?P<depotfile>\/\/.*)#\d+"
                 r" - can't (overwrite existing|update modified) file "
                 r"(?P<localfile>.*)$",
                 line,
@@ -112,7 +112,7 @@ class PerforceErrorMessageBox(ErrorMessageBox):
             self.log.info(f"sync -f {depot_file}")
             result = self.force_sync(depot_file)
             stdout_result = result.stdout.strip()
-            if " - refreshing " in stdout_result:
+            if re.match(r".+ - (refreshing|updating|added) .+", stdout_result):
                 self.log.info(f">>> {stdout_result}")
                 color_result = "YellowGreen"
             else:
@@ -212,7 +212,9 @@ class PerforceSync(PreLaunchHook):
 
                 percent_match = re.search(r"(\d{1,3}%|finishing)", capture_log)
                 warning_match = re.search(
-                    r"(.* can't (overwrite|update) .*)\n", capture_log, re.M
+                    r"(\/\/.+ can't (overwrite|update) .+)\n",
+                    capture_log,
+                    re.M,
                 )
                 if percent_match:
                     current_percent = percent_match.group(1)
@@ -222,7 +224,7 @@ class PerforceSync(PreLaunchHook):
                     capture_log = ""
                 elif warning_match:
                     self.log.info(f"*** WRN: {warning_match.group(1)}")
-                    complete_log += capture_log
+                    complete_log += capture_log.strip()
                     capture_log = ""
                 elif capture_log.endswith("\n"):
                     if capture_log.strip():
