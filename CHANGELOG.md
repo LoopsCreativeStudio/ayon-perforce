@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## v0.4.0 (2024-08-01)
+
+### Feature
+
+* feat: resolve sync button to force resync in popup warning (#6) ([`fb5f548`](https://github.com/LoopsCreativeStudio/ayon-perforce/commit/fb5f548f0af47e8eb89b14e8a862921cd52983f8))
+
 ## v0.3.0 (2024-07-26)
 
 ### Feature
