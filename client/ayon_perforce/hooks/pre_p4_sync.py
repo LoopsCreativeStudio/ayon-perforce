@@ -75,6 +75,25 @@ class PerforceErrorMessageBox(ErrorMessageBox):
         content_label.setCursor(Qt.IBeamCursor)
         content_layout.addWidget(content_label)
 
+    def revert_file(self, depot_file:str) -> subprocess.CompletedProcess:
+        """Do a Perforce revert for the give depot file.
+
+        Args:
+            depot_file (str): the depot file to revert.
+
+        Returns:
+            subprocess.CompletedProcess: The process result.
+        """
+        return subprocess.run(
+            ['p4', 'revert', depot_file],
+            shell=True,
+            text=True,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            errors='replace',
+        )
+
     def force_sync(self, depot_file:str) -> subprocess.CompletedProcess:
         """Force Perforce sync for the give depot file.
 
@@ -102,16 +121,24 @@ class PerforceErrorMessageBox(ErrorMessageBox):
         for line in self._exc_msg.splitlines():
             wrn_match = re.match(
                 r"(?P<depotfile>\/\/.*)#\d+"
-                r" - can't (overwrite existing|update modified) file "
+                r" - (?P<opened>is opened for add and )?can't "
+                r"(overwrite existing file|update modified file|be replaced)"
                 r"(?P<localfile>.*)$",
                 line,
             )
             if not wrn_match:
                 continue
             depot_file = wrn_match.group("depotfile")
-            self.log.info(f"sync -f {depot_file}")
+            # revert if needed
+            if wrn_match.group("opened"):
+                self.log.info(f"p4 revert {depot_file}")
+                revert_result = self.revert_file(depot_file)
+                self.log.info(f">>> {revert_result.stdout.strip()}")
+            # force sync
+            self.log.info(f"p4 sync -f {depot_file}")
             result = self.force_sync(depot_file)
             stdout_result = result.stdout.strip()
+            # check sync result
             if re.match(r".+ - (refreshing|updating|added) .+", stdout_result):
                 self.log.info(f">>> {stdout_result}")
                 color_result = "YellowGreen"
@@ -212,7 +239,7 @@ class PerforceSync(PreLaunchHook):
 
                 percent_match = re.search(r"(\d{1,3}%|finishing)", capture_log)
                 warning_match = re.search(
-                    r"(\/\/.+ can't (overwrite|update) .+)\n",
+                    r"(\/\/.+ can't (overwrite|update|be replaced).*)\n",
                     capture_log,
                     re.M,
                 )
@@ -223,8 +250,9 @@ class PerforceSync(PreLaunchHook):
                         last_percent = current_percent
                     capture_log = ""
                 elif warning_match:
-                    self.log.info(f"*** WRN: {warning_match.group(1)}")
-                    complete_log += capture_log.strip()
+                    warning_message = warning_match.group(1).strip()
+                    self.log.info(f"*** WRN: {warning_message}")
+                    complete_log += warning_message + "\n"
                     capture_log = ""
                 elif capture_log.endswith("\n"):
                     if capture_log.strip():
