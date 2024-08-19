@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## v0.4.1 (2024-08-19)
+
+### Fix
+
+* fix: resolve for opened file with revert before sync force (#8) ([`66772ff`](https://github.com/LoopsCreativeStudio/ayon-perforce/commit/66772ffcca326ce99e219b6596013ede248b3029))
+
+* fix: re match patterns adjustment ([`aca00ff`](https://github.com/LoopsCreativeStudio/ayon-perforce/commit/aca00ffd032975a05812d43cc13b5561ff81c468))
+
 ## v0.4.0 (2024-08-01)
 
 ### Feature
