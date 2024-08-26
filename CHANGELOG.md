@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## v0.4.2 (2024-08-26)
+
+### Fix
+
+* fix: bug capure log ([`a775dc2`](https://github.com/LoopsCreativeStudio/ayon-perforce/commit/a775dc22923016166691dc0221b60f7d018eeea4))
+
 ## v0.4.1 (2024-08-19)
 
 ### Fix
