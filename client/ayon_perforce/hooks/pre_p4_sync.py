@@ -255,8 +255,9 @@ class PerforceSync(PreLaunchHook):
                     complete_log += warning_message + "\n"
                     capture_log = ""
                 elif capture_log.endswith("\n"):
-                    if capture_log.strip():
-                        complete_log += capture_log.strip() + "\n"
+                    capture_log = capture_log.strip().strip("/|-\\")
+                    if capture_log:
+                        complete_log += capture_log + "\n"
                     capture_log = ""
                 elif capture_log == "sync ":
                     capture_log = ""
