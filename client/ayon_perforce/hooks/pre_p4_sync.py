@@ -18,6 +18,91 @@ from ayon_applications import (
     ApplicationLaunchFailed,
 )
 
+
+class PerforceResolver:
+    """Perforce Resolver."""
+
+    def __init__(self, wrn_msg: str) -> None:
+        self.log = Logger.get_logger("PerforceResolver")
+        self.wrn_msg = wrn_msg
+
+    @staticmethod
+    def revert_file(depot_file: str) -> subprocess.CompletedProcess:
+        """Do a Perforce revert for the give depot file.
+
+        Args:
+            depot_file (str): the depot file to revert.
+
+        Returns:
+            subprocess.CompletedProcess: The process result.
+        """
+        return subprocess.run(
+            ["p4", "revert", depot_file],
+            shell=True,
+            text=True,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            errors="replace",
+        )
+
+    @staticmethod
+    def force_sync(depot_file: str) -> subprocess.CompletedProcess:
+        """Force Perforce sync for the give depot file.
+
+        Args:
+            depot_file (str): the depot file to update.
+
+        Returns:
+            subprocess.CompletedProcess: The process result.
+        """
+        return subprocess.run(
+            ["p4", "sync", "-f", f"{depot_file}#head"],
+            shell=True,
+            text=True,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            errors="replace",
+        )
+
+    def resolve(self) -> list[subprocess.CompletedProcess]:
+        """Resolve Perforce sync warning.
+
+        Returns:
+            list[subprocess.CompletedProcess]: The subprocess results.
+        """
+        subprocess_results = []
+        for line in self.wrn_msg.splitlines():
+            wrn_match = re.match(
+                r"(?P<depotfile>\/\/.*)#\d+"
+                r" - (?P<opened>is opened for add and )?can't "
+                r"(overwrite existing file|update modified file|be replaced)"
+                r"(?P<localfile>.*)$",
+                line,
+            )
+            if not wrn_match:
+                continue
+            depot_file = wrn_match.group("depotfile")
+            # revert if needed
+            if wrn_match.group("opened"):
+                self.log.info(f"p4 revert {depot_file}")
+                revert_result = self.revert_file(depot_file)
+                self.log.info(f">>> {revert_result.stdout.strip()}")
+            # force sync
+            self.log.info(f"p4 sync -f {depot_file}")
+            result = self.force_sync(depot_file)
+            stdout_result = result.stdout.strip()
+            # check sync result
+            if re.match(r".+ - (refreshing|updating|added) .+", stdout_result):
+                self.log.info(f">>> {stdout_result}")
+            else:
+                self.log.info(f"!!! {stdout_result}")
+            subprocess_results.append(result)
+
+        return subprocess_results
+
+
 class PerforceErrorMessageBox(ErrorMessageBox):
     """Perforce Error Message Box."""
 
@@ -30,7 +115,6 @@ class PerforceErrorMessageBox(ErrorMessageBox):
         self._p4settings = p4settings
         self._exc_msg = exc_msg
         self._msg_type = msg_type
-        self.log = Logger.get_logger("PerforceResolve")
         super().__init__(
             f"Perforce {self._msg_type}", QApplication.activeWindow(),
         )
@@ -78,74 +162,17 @@ class PerforceErrorMessageBox(ErrorMessageBox):
         content_label.setCursor(Qt.IBeamCursor)
         content_layout.addWidget(content_label)
 
-    def revert_file(self, depot_file: str) -> subprocess.CompletedProcess:
-        """Do a Perforce revert for the give depot file.
-
-        Args:
-            depot_file (str): the depot file to revert.
-
-        Returns:
-            subprocess.CompletedProcess: The process result.
-        """
-        return subprocess.run(
-            ["p4", "revert", depot_file],
-            shell=True,
-            text=True,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            errors="replace",
-        )
-
-    def force_sync(self, depot_file: str) -> subprocess.CompletedProcess:
-        """Force Perforce sync for the give depot file.
-
-        Args:
-            depot_file (str): the depot file to update.
-
-        Returns:
-            subprocess.CompletedProcess: The process result.
-        """
-        return subprocess.run(
-            ["p4", "sync", "-f", f"{depot_file}#head"],
-            shell=True,
-            text=True,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            errors="replace",
-        )
-
     def resolve_warning(self) -> None:
         """Resolve Perforce sync warning."""
         result_html = ["<span style='font-size:14pt;'>Resolve Result:</span>"]
         result_failed = False
-        for line in self._exc_msg.splitlines():
-            wrn_match = re.match(
-                r"(?P<depotfile>\/\/.*)#\d+"
-                r" - (?P<opened>is opened for add and )?can't "
-                r"(overwrite existing file|update modified file|be replaced)"
-                r"(?P<localfile>.*)$",
-                line,
-            )
-            if not wrn_match:
-                continue
-            depot_file = wrn_match.group("depotfile")
-            # revert if needed
-            if wrn_match.group("opened"):
-                self.log.info(f"p4 revert {depot_file}")
-                revert_result = self.revert_file(depot_file)
-                self.log.info(f">>> {revert_result.stdout.strip()}")
-            # force sync
-            self.log.info(f"p4 sync -f {depot_file}")
-            result = self.force_sync(depot_file)
+
+        for result in PerforceResolver(self._exc_msg).resolve():
             stdout_result = result.stdout.strip()
             # check sync result
             if re.match(r".+ - (refreshing|updating|added) .+", stdout_result):
-                self.log.info(f">>> {stdout_result}")
                 color_result = "YellowGreen"
             else:
-                self.log.info(f"!!! {stdout_result}")
                 color_result = "Orange"
                 result_failed = True
 
@@ -263,7 +290,16 @@ class PerforceSync(PreLaunchHook):
                 elif capture_log == "sync ":
                     capture_log = ""
 
-            if process.returncode != 0:
+            if QApplication.instance() is None:
+                if process.returncode != 0:
+                    self.log.error(
+                        "Perforce sync process return non-zero code: "
+                        f"{process.returncode}",
+                    )
+                if complete_log:
+                    PerforceResolver(complete_log).resolve()
+
+            elif process.returncode != 0:
                 error_msg = (
                     "Perforce sync process return non-zero code: "
                     f"{process.returncode}"
@@ -302,8 +338,9 @@ class PerforceSync(PreLaunchHook):
                 raise ApplicationLaunchFailed(
                     "Couldn't run the application! Perforce config error!",
                 )
-            box = PerforceErrorMessageBox(p4settings, error_msg)
-            box.exec_()
+            if QApplication.instance() is not None:
+                box = PerforceErrorMessageBox(p4settings, error_msg)
+                box.exec_()
             return
 
         for p4env in ("P4PORT", "P4CLIENT", "P4USER"):
