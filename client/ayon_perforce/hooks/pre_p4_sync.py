@@ -1,7 +1,7 @@
 """Perforce Sync PreLaunch Hook."""
+from __future__ import annotations
 import re
 import subprocess
-from typing import Optional, Union, Dict
 
 from qtpy.QtWidgets import QApplication, QLabel, QPushButton
 from qtpy.QtGui import QIcon
@@ -13,14 +13,17 @@ from ayon_core.style import load_stylesheet
 from ayon_core.tools.utils import ErrorMessageBox
 
 from ayon_applications import (
-    PreLaunchHook, LaunchTypes, ApplicationLaunchFailed
+    PreLaunchHook,
+    LaunchTypes,
+    ApplicationLaunchFailed,
 )
 
 class PerforceErrorMessageBox(ErrorMessageBox):
     """Perforce Error Message Box."""
+
     def __init__(
         self,
-        p4settings: Dict[str, Union[str, bool]],
+        p4settings: dict[str, str | bool],
         exc_msg: str,
         msg_type: str = "ERROR",
     ) -> None:
@@ -68,14 +71,14 @@ class PerforceErrorMessageBox(ErrorMessageBox):
             if key != "bypass" and (key != "P4USER" or value is not None)
         ]
         content_html.append(
-            f"<br>{self.convert_text_for_html(self._exc_msg)}"
+            f"<br>{self.convert_text_for_html(self._exc_msg)}",
         )
         content_label = QLabel("<br>".join(content_html), self)
         content_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         content_label.setCursor(Qt.IBeamCursor)
         content_layout.addWidget(content_label)
 
-    def revert_file(self, depot_file:str) -> subprocess.CompletedProcess:
+    def revert_file(self, depot_file: str) -> subprocess.CompletedProcess:
         """Do a Perforce revert for the give depot file.
 
         Args:
@@ -85,16 +88,16 @@ class PerforceErrorMessageBox(ErrorMessageBox):
             subprocess.CompletedProcess: The process result.
         """
         return subprocess.run(
-            ['p4', 'revert', depot_file],
+            ["p4", "revert", depot_file],
             shell=True,
             text=True,
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            errors='replace',
+            errors="replace",
         )
 
-    def force_sync(self, depot_file:str) -> subprocess.CompletedProcess:
+    def force_sync(self, depot_file: str) -> subprocess.CompletedProcess:
         """Force Perforce sync for the give depot file.
 
         Args:
@@ -104,18 +107,17 @@ class PerforceErrorMessageBox(ErrorMessageBox):
             subprocess.CompletedProcess: The process result.
         """
         return subprocess.run(
-            ['p4', 'sync', '-f', f'{depot_file}#head'],
+            ["p4", "sync", "-f", f"{depot_file}#head"],
             shell=True,
             text=True,
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            errors='replace',
+            errors="replace",
         )
 
     def resolve_warning(self) -> None:
-        """Resolve Perforce sync warning.
-        """
+        """Resolve Perforce sync warning."""
         result_html = ["<span style='font-size:14pt;'>Resolve Result:</span>"]
         result_failed = False
         for line in self._exc_msg.splitlines():
@@ -149,7 +151,7 @@ class PerforceErrorMessageBox(ErrorMessageBox):
 
             result_html.append(
                 f"<span style='color:{color_result};'>"
-                f"{self.convert_text_for_html(stdout_result)}</span>"
+                f"{self.convert_text_for_html(stdout_result)}</span>",
             )
 
         resolve_label = QLabel("<br>".join(result_html), self)
@@ -164,17 +166,16 @@ class PerforceErrorMessageBox(ErrorMessageBox):
         else:
             self.resolve_btn.setDisabled(True)
 
+
 class PerforceSync(PreLaunchHook):
-    """Run Perforce Sync for the given project config.
-    """
+    """Run Perforce Sync for the given project config."""
     order = -1
     launch_types = {LaunchTypes.local}
 
-    def _get_p4settings(self) -> Optional[Dict[str, Union[str, bool]]]:
+    def _get_p4settings(self) -> dict[str, str | bool] | None:
         perforce_settings = self.data["project_settings"]["perforce"]
         perforce_hosts = {
-            host["name"]: host["bypass"]
-            for host in perforce_settings["hosts"]
+            host["name"]: host["bypass"] for host in perforce_settings["hosts"]
         }
 
         if self.host_name not in perforce_hosts:
@@ -197,7 +198,7 @@ class PerforceSync(PreLaunchHook):
         if p4client.count("{") == p4client.count("}") > 0:
             p4client = p4client.format(
                 project_name=self.data["project_name"],
-                **self.data["env"]
+                **self.data["env"],
             )
         if perforce_settings.get("p4client_lower"):
             p4client = p4client.lower()
@@ -206,11 +207,11 @@ class PerforceSync(PreLaunchHook):
             "P4PORT": p4port or None,
             "P4CLIENT": p4client or None,
             "P4USER": p4user or None,
-            "bypass": perforce_hosts.get(self.host_name, False)
+            "bypass": perforce_hosts.get(self.host_name, False),
         }
 
     def run_perforce_sync(
-        self, p4settings: Dict[str, Union[str, bool]]
+        self, p4settings: dict[str, str | bool],
     ) -> None:
         """Run Perforce Sync using the given settings.
 
@@ -219,13 +220,13 @@ class PerforceSync(PreLaunchHook):
         """
         self.log.info("[SYNC PERFORCE PROJECT]")
         with subprocess.Popen(
-            ['p4', '-I', 'sync', '-s', '-q'],
+            ["p4", "-I", "sync", "-s", "-q"],
             shell=True,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             bufsize=0,
-            errors='replace',
+            errors="replace",
         ) as process:
             complete_log = ""
             capture_log = ""
@@ -233,7 +234,7 @@ class PerforceSync(PreLaunchHook):
             read_log = None
             while True:
                 read_log = process.stdout.read(1)
-                if read_log == "" and not process.poll() is None:
+                if read_log == "" and process.poll() is not None:
                     break
                 capture_log += read_log
 
@@ -241,7 +242,7 @@ class PerforceSync(PreLaunchHook):
                 warning_match = re.search(
                     r"(\/\/.+ can't (overwrite|update|be replaced).*)\n",
                     capture_log,
-                    re.M,
+                    re.MULTILINE,
                 )
                 if percent_match:
                     current_percent = percent_match.group(1)
@@ -269,12 +270,12 @@ class PerforceSync(PreLaunchHook):
                 )
                 self.log.error(error_msg)
                 box = PerforceErrorMessageBox(
-                    p4settings, f"{complete_log}\n{error_msg}"
+                    p4settings, f"{complete_log}\n{error_msg}",
                 )
                 box.exec_()
                 if not p4settings["bypass"]:
                     raise ApplicationLaunchFailed(
-                        "Couldn't run the application! Perforce sync failed!"
+                        "Couldn't run the application! Perforce sync failed!",
                     )
             elif complete_log:
                 box = PerforceErrorMessageBox(
@@ -286,7 +287,6 @@ class PerforceSync(PreLaunchHook):
 
     def execute(self, *_args, **_kwargs) -> None:
         """Execute prelaunch hook process."""
-
         p4settings = self._get_p4settings()
 
         if p4settings is None:
@@ -300,7 +300,7 @@ class PerforceSync(PreLaunchHook):
             self.log.error(error_msg)
             if not p4settings["bypass"]:
                 raise ApplicationLaunchFailed(
-                    "Couldn't run the application! Perforce config error!"
+                    "Couldn't run the application! Perforce config error!",
                 )
             box = PerforceErrorMessageBox(p4settings, error_msg)
             box.exec_()
@@ -309,7 +309,8 @@ class PerforceSync(PreLaunchHook):
         for p4env in ("P4PORT", "P4CLIENT", "P4USER"):
             if p4settings[p4env] is not None:
                 subprocess.run(
-                    ["p4", "set", f"{p4env}={p4settings[p4env]}"], check=True
+                    ["p4", "set", f"{p4env}={p4settings[p4env]}"],
+                    check=True,
                 )
 
         self.run_perforce_sync(p4settings)
